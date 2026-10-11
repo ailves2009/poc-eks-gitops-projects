@@ -1,0 +1,50 @@
+# The `demo` application: nginx + keepwarm, rendered from charts/demo-apps.
+# Project name = application name (the workloads ApplicationSet derives it from the path
+# workloads/<env>/<app>/), so a new application is a new AppProject here first.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: demo
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Demo workloads (nginx behind an ALB + keepwarm), every environment
+  sourceRepos:
+    - https://github.com/ailves2009/poc-aws-eks-karpenter.git # charts/
+    - https://github.com/ailves2009/poc-eks-gitops-values.git # workloads/*/demo/
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "demo-*" # demo-dev, demo-staging, ... (<app>-<env>)
+  # CreateNamespace=true needs Namespace; nothing else cluster-scoped is allowed.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  # Exactly what poc-lib renders. A chart that starts emitting a new kind fails the sync
+  # until the platform adds it here -- a deliberate review point.
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: networking.k8s.io
+      kind: Ingress
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+  roles:
+    - name: developer
+      description: Product team — may see and sync demo Applications
+      policies:
+        - p, proj:demo:developer, applications, get, demo/*, allow
+        - p, proj:demo:developer, applications, sync, demo/*, allow
+  # Nightly maintenance freeze: no automated sync 02:00-03:00 UTC; people can still sync by
+  # hand (manualSync). Production would add e.g. a Friday-evening-to-Monday freeze.
+  syncWindows:
+    - kind: deny
+      schedule: "0 2 * * *"
+      duration: 1h
+      timeZone: UTC
+      applications: ["*"]
+      manualSync: true

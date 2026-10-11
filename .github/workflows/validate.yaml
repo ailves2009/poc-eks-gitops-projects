@@ -1,0 +1,38 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+env:
+  KUBECONFORM_VERSION: v0.6.7
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform (pinned)
+        run: |
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar xz -C /usr/local/bin kubeconform
+
+      - name: kubeconform -strict (real Argo CD CRD schemas)
+        run: |
+          kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            projects
+
+      - name: One AppProject per file, file named after it
+        run: |
+          set -euo pipefail
+          for f in projects/*.yaml; do
+            name=$(yq '.metadata.name' "$f")
+            [ "projects/${name}.yaml" = "$f" ] || { echo "::error file=$f::metadata.name '$name' must match the file name"; exit 1; }
+          done

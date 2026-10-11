@@ -1,0 +1,45 @@
+# Infrastructure components of poc-plt-eks (metrics-server today; ACK controllers and CRD
+# releases in phase 2). The guardrail is not the destination namespace but the explicit lists:
+# which repositories may be rendered and which cluster-scoped kinds may be created.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: infra-poc-plt-eks
+  namespace: argocd
+  # Without the finalizer a project in use could be deleted from under its Applications.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Platform components of the poc-plt-eks cluster
+  sourceRepos:
+    - https://github.com/ailves2009/poc-eks-gitops-values.git
+    - https://kubernetes-sigs.github.io/metrics-server/
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: kube-system
+  # Cluster-scoped kinds, named one by one. metrics-server registers the metrics.k8s.io
+  # APIService and its aggregated-reader ClusterRoles.
+  clusterResourceWhitelist:
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: apiregistration.k8s.io
+      kind: APIService
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ServiceAccount
+    - group: ""
+      kind: Service
+    - group: apps
+      kind: Deployment
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+    - group: policy
+      kind: PodDisruptionBudget
+  roles:
+    - name: operator
+      description: Platform on-call — may sync and inspect infra Applications, not edit them
+      policies:
+        - p, proj:infra-poc-plt-eks:operator, applications, get, infra-poc-plt-eks/*, allow
+        - p, proj:infra-poc-plt-eks:operator, applications, sync, infra-poc-plt-eks/*, allow
